@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Convertidor .note a .txt</title>
+    <link rel="icon" href="images/icon.png">
+	<style>
+		:root {
+			--bg: #eef2f4; 
+			--surface: #ffffff; 
+			--ink: #16222a; 
+			--muted: #5b6b74;
+			--line: #cfd9de; 
+			--accent: #1f6f78; 
+			--accent-ink: #ffffff; 
+			--err: #a3362b;
+			color-scheme: light;
+		}
+		@media (prefers-color-scheme: dark) {
+			:root {
+				--bg: #0f171b; 
+				--surface: #172228; 
+				--ink: #e3ecef; 
+				--muted: #8fa1a9;
+				--line: #2b3a41; 
+				--accent: #5cc4cf; 
+				--accent-ink: #0b1a1d; 
+				--err: #ff8f84;
+				color-scheme: dark;
+			}
+		}
+		* { 
+			box-sizing: border-box; 
+		}
+		body {
+			margin: 0; 
+			background: var(--bg); 
+			color: var(--ink);
+			font: 16px/1.55 "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+		}
+		main { 
+			max-width: 760px; 
+			margin: 0 auto; 
+			padding: 32px 18px 64px; 
+		}
+		.bar-top {
+			position: sticky;
+			top: 0;
+			z-index: 20;
+			display: flex;
+			justify-content: flex-start;
+			gap: 10px;
+			align-items: center;
+			padding: 0px auto;
+			background: color-mix(in srgb, var(--bg) 88%, transparent);
+			backdrop-filter: blur(8px);
+			font: 600 .9375rem / 1 var(--sans);
+		}
+		.logo {
+			left: auto;
+			height: 75px;
+			width: 75px;
+		}
+		h1 { 
+			font-size: 1.9rem; 
+			line-height: 1.15; 
+			margin: 0 0 6px; 
+			letter-spacing: -0.01em; 
+		}
+		.sub { 
+			color: var(--muted); 
+			margin: 0 0 24px; 
+		}
+
+		.tabs { 
+			display: flex; 
+			gap: 6px; 
+			margin: 0 0 16px; 
+			padding: 4px; 
+			background: var(--surface); 
+			border: 1px solid var(--line); 
+			border-radius: 11px; 
+		}
+		.tabs button { 
+			flex: 1; 
+			background: transparent; 
+			color: var(--muted); 
+			border: 0; 
+			font-size: .95rem; 
+		}
+		.tabs button[aria-selected="true"] { 
+			background: var(--accent); 
+			color: var(--accent-ink); 
+		}
+
+		.drop {
+			display: block; 
+			border: 2px dashed var(--line); 
+			border-radius: 14px;
+			background: var(--surface); 
+			padding: 34px 18px; 
+			text-align: center; 
+			cursor: pointer;
+			transition: border-color .15s, background .15s;
+		}
+		.drop:hover, .drop.over, .drop:focus-within { 
+			border-color: var(--accent); 
+		}
+		.drop strong { 
+			display: block; 
+			font-size: 1.1rem; 
+		}
+		.drop span { 
+			color: var(--muted); 
+			font-size: .95rem; 
+		}
+		.drop input { 
+			position: absolute; 
+			opacity: 0; 
+			width: 1px; 
+			height: 1px; 
+		}
+
+		.bar { 
+			display: flex; 
+			gap: 10px; 
+			align-items: center; 
+			justify-content: space-between; 
+			margin: 26px 0 10px; 
+		}
+		.bar h2 { 
+			font-size: 1.05rem; 
+			margin: 0; 
+		}
+
+		button {
+			font: inherit; 
+			font-weight: 600; 
+			cursor: pointer; 
+			border-radius: 9px;
+			border: 1px solid var(--accent); 
+			background: var(--accent); 
+			color: var(--accent-ink);
+			padding: 8px 14px;
+		}
+		button.ghost { 
+			background: transparent; 
+			color: var(--accent); 
+		}
+		button:focus-visible, .drop:focus-within { 
+			outline: 3px solid var(--accent); 
+			outline-offset: 2px; 
+		}
+
+		.item { 
+			background: var(--surface); 
+			border: 1px solid var(--line); 
+			border-radius: 12px; 
+			padding: 14px; 
+			margin-bottom: 12px; 
+		}
+		.item.error { 
+			border-color: var(--err); 
+		}
+		.head { 
+			display: flex; 
+			flex-wrap: wrap; 
+			gap: 8px 12px; 
+			align-items: baseline; 
+			justify-content: space-between; 
+		}
+		.name { 
+			font-weight: 700; 
+			word-break: break-all; 
+		}
+		.meta { 
+			color: var(--muted); 
+			font-size: .88rem; 
+		}
+		.err-msg { 
+			color: var(--err); 
+			margin: 8px 0 0; 
+		}
+		textarea {
+			width: 100%; 
+			min-height: 150px; 
+			margin-top: 10px; 
+			resize: vertical;
+			font: inherit; 
+			font-size: .95rem; 
+			color: var(--ink); 
+			background: var(--bg);
+			border: 1px solid var(--line); 
+			border-radius: 9px; 
+			padding: 10px;
+		}
+		.actions { 
+			display: flex; 
+			flex-wrap: wrap; 
+			gap: 8px; 
+			margin-top: 10px; 
+		}
+		.empty { 
+			color: var(--muted); 
+			text-align: center; 
+			padding: 18px 0; 
+		}
+	</style>
+</head>
+<body>
+	<div class="bar-top">
+		<img src="images/icon.png" alt="logo" class="logo">
+		<h1>Convertidor de .note a .txt</h1>
+	</div>
+	<main>
+		<p class="sub">Todo ocurre en tu navegador: los archivos no se suben a ningún servidor.</p>
+
+		<div class="tabs" role="tablist" aria-label="Formato de salida">
+			<button role="tab" id="tab-txt" aria-selected="true">note.note → note.txt</button>
+			<button role="tab" id="tab-html" aria-selected="false">note.note → note.html</button>
+		</div>
+
+		<label class="drop" id="drop">
+			<input type="file" id="picker" multiple>
+			<strong>Elige tus archivos .note</strong>
+			<span>o arrástralos hasta aquí</span>
+		</label>
+
+		<div class="bar">
+			<h2 id="count">Sin archivos</h2>
+			<button id="all" class="ghost" hidden>Descargar todos</button>
+		</div>
+		<div id="list"><p class="empty">Los archivos convertidos aparecerán aquí.</p></div>
+	</main>
+
+	<script>
+		function validUnit(u) {
+			return u === 10 || u === 13 || u === 9 ||
+				(u >= 32 && u <= 126) || (u >= 160 && u <= 255) ||
+				(u >= 0x2010 && u <= 0x2027) || u === 0x20AC;
+		}
+
+		function longestUtf16Run(bytes) {
+			let best = "";
+			for (let start = 0; start < 2; start++) {
+				let run = [];
+				const flush = () => {
+					if (run.length > best.length) best = String.fromCharCode(...run.slice(0, 60000));
+					run = [];
+				};
+				for (let i = start; i + 1 < bytes.length; i += 2) {
+					const u = bytes[i] | (bytes[i + 1] << 8);
+					if (validUnit(u)) run.push(u); else flush();
+				}
+				flush();
+			}
+			return best;
+		}
+
+		function extractText(buffer) {
+			const bytes = new Uint8Array(buffer);
+			if (!bytes.includes(0)) {
+				try {
+					return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+				} catch (e) { /* no era UTF-8, se sigue */ }
+			}
+			const text = longestUtf16Run(bytes).replace(/^\n+|\s+$/g, "");
+			return text.length >= 3 ? text : "";
+		}
+
+		const list = document.getElementById("list");
+		const count = document.getElementById("count");
+		const allBtn = document.getElementById("all");
+		const drop = document.getElementById("drop");
+		const picker = document.getElementById("picker");
+		const results = [];
+
+		let mode = "txt";
+
+		function outName(name) {
+			return name.replace(/\.note$/i, "") + "." + mode;
+		}
+
+		function textToHtml(text) {
+			const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+			const lines = text.replace(/\r\n?/g, "\n").split("\n").map(l => l.trim());
+			const out = [];
+			let stanza = [];
+			let i = 0;
+			while (i < lines.length && !lines[i]) i++;
+			if (i < lines.length) out.push("<h2>" + esc(lines[i++]) + "</h2>");
+			const flush = () => {
+				if (!stanza.length) return;
+				const body = stanza.map((l, k) => esc(l) + (k < stanza.length - 1 ? " <br>" : "")).join("\n");
+				out.push("<p>\n" + body + "\n</p>");
+				stanza = [];
+			};
+			for (; i < lines.length; i++) {
+				if (lines[i]) stanza.push(lines[i]); else flush();
+			}
+			flush();
+			return out.join("\n\n");
+		}
+
+		function getOut(r) {
+			if (mode === "txt") return r.text;
+			if (r.html == null) r.html = textToHtml(r.text);
+			return r.html;
+		}
+
+		function download(name, text) {
+			const type = mode === "html" ? "text/html" : "text/plain";
+			const blob = new Blob([text + "\n"], { type: type + ";charset=utf-8" });
+			const a = document.createElement("a");
+			a.href = URL.createObjectURL(blob);
+			a.download = name;
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+			setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+		}
+
+		function render() {
+			const ok = results.filter(r => r.text);
+			count.textContent = results.length
+				? `${ok.length} de ${results.length} convertidos`
+				: "Sin archivos";
+			allBtn.hidden = ok.length < 2;
+			if (!results.length) {
+				list.innerHTML = '<p class="empty">Los archivos convertidos aparecerán aquí.</p>';
+				return;
+			}
+			list.innerHTML = "";
+			results.forEach(r => {
+				const card = document.createElement("div");
+				card.className = "item" + (r.text ? "" : " error");
+				const head = document.createElement("div");
+				head.className = "head";
+				head.innerHTML = '<span class="name"></span><span class="meta"></span>';
+				head.firstChild.textContent = r.name + " → " + outName(r.name);
+				head.lastChild.textContent = (r.size / 1024).toFixed(1) + " KB";
+				card.appendChild(head);
+
+				if (!r.text) {
+					const p = document.createElement("p");
+					p.className = "err-msg";
+					p.textContent = "No se encontró texto legible en este archivo.";
+					card.appendChild(p);
+				} else {
+					const ta = document.createElement("textarea");
+					ta.value = getOut(r);
+					ta.setAttribute("aria-label", "Texto de " + r.name);
+					ta.addEventListener("input", () => {
+						if (mode === "txt") { r.text = ta.value; r.html = null; }
+						else { r.html = ta.value; }
+					});
+					card.appendChild(ta);
+
+					const actions = document.createElement("div");
+					actions.className = "actions";
+					const dl = document.createElement("button");
+					dl.textContent = "Descargar ." + mode;
+					dl.onclick = () => download(outName(r.name), getOut(r));
+					const cp = document.createElement("button");
+					cp.className = "ghost";
+					cp.textContent = "Copiar texto";
+					cp.onclick = async () => {
+						try { await navigator.clipboard.writeText(getOut(r)); cp.textContent = "Copiado"; }
+						catch (e) { ta.select(); cp.textContent = "Selecciona y copia"; }
+						setTimeout(() => (cp.textContent = "Copiar texto"), 1600);
+					};
+					actions.append(dl, cp);
+					card.appendChild(actions);
+				}
+				list.appendChild(card);
+			});
+		}
+
+		async function handleFiles(files) {
+			for (const f of files) {
+				const buf = await f.arrayBuffer();
+				results.push({ name: f.name, size: f.size, text: extractText(buf) });
+			}
+			render();
+		}
+
+		["txt", "html"].forEach(m =>
+			document.getElementById("tab-" + m).addEventListener("click", () => {
+				mode = m;
+				["txt", "html"].forEach(x =>
+					document.getElementById("tab-" + x).setAttribute("aria-selected", String(x === m)));
+				render();
+			}));
+
+		picker.addEventListener("change", e => { handleFiles(e.target.files); picker.value = ""; });
+		["dragenter", "dragover"].forEach(ev =>
+			drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+		["dragleave", "drop"].forEach(ev =>
+			drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+		drop.addEventListener("drop", e => handleFiles(e.dataTransfer.files));
+
+		allBtn.addEventListener("click", () => {
+			results.filter(r => r.text).forEach((r, i) =>
+				setTimeout(() => download(outName(r.name), getOut(r)), i * 350));
+		});
+	</script>
+</body>
+</html>
