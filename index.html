@@ -206,6 +206,18 @@
 			text-align: center; 
 			padding: 18px 0; 
 		}
+
+		button.danger {
+			background: transparent;
+			color: var(--err);
+			border-color: var(--err);
+		}
+		.bar-actions {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+			justify-content: flex-end;
+		}
 	</style>
 </head>
 <body>
@@ -229,181 +241,205 @@
 
 		<div class="bar">
 			<h2 id="count">Sin archivos</h2>
-			<button id="all" class="ghost" hidden>Descargar todos</button>
+			<div class="bar-actions">
+				<button id="all" class="ghost" hidden>Descargar todos</button>
+				<button id="delAll" class="danger" hidden>Borrar todos</button>
+			</div>
 		</div>
-		<div id="list"><p class="empty">Los archivos convertidos aparecerán aquí.</p></div>
+		<div id="list">
+			<p class="empty">Los archivos convertidos aparecerán aquí.</p>
+		</div>
 	</main>
 
-	<script>
-		function validUnit(u) {
-			return u === 10 || u === 13 || u === 9 ||
-				(u >= 32 && u <= 126) || (u >= 160 && u <= 255) ||
-				(u >= 0x2010 && u <= 0x2027) || u === 0x20AC;
-		}
+    <script>
+        // ---- Extracción de texto -------------------------------------------------
+        // Los .note guardan el texto como UTF-16LE rodeado de datos binarios.
+        // Se buscan, en las dos alineaciones posibles, las secuencias de caracteres
+        // válidos y se elige la más larga.
+        function validUnit(u) {
+        return u === 10 || u === 13 || u === 9 ||
+            (u >= 32 && u <= 126) || (u >= 160 && u <= 255) ||
+            (u >= 0x2010 && u <= 0x2027) || u === 0x20AC;
+        }
 
-		function longestUtf16Run(bytes) {
-			let best = "";
-			for (let start = 0; start < 2; start++) {
-				let run = [];
-				const flush = () => {
-					if (run.length > best.length) best = String.fromCharCode(...run.slice(0, 60000));
-					run = [];
-				};
-				for (let i = start; i + 1 < bytes.length; i += 2) {
-					const u = bytes[i] | (bytes[i + 1] << 8);
-					if (validUnit(u)) run.push(u); else flush();
-				}
-				flush();
-			}
-			return best;
-		}
+        function longestUtf16Run(bytes) {
+        let best = "";
+        for (let start = 0; start < 2; start++) {
+            let run = [];
+            const flush = () => {
+            if (run.length > best.length) best = String.fromCharCode(...run.slice(0, 60000));
+            run = [];
+            };
+            for (let i = start; i + 1 < bytes.length; i += 2) {
+            const u = bytes[i] | (bytes[i + 1] << 8);
+            if (validUnit(u)) run.push(u); else flush();
+            }
+            flush();
+        }
+        return best;
+        }
 
-		function extractText(buffer) {
-			const bytes = new Uint8Array(buffer);
-			if (!bytes.includes(0)) {
-				try {
-					return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-				} catch (e) { /* no era UTF-8, se sigue */ }
-			}
-			const text = longestUtf16Run(bytes).replace(/^\n+|\s+$/g, "");
-			return text.length >= 3 ? text : "";
-		}
+        function extractText(buffer) {
+        const bytes = new Uint8Array(buffer);
+        // 1) Si ya es texto UTF-8 válido y sin bytes nulos, se usa tal cual.
+        if (!bytes.includes(0)) {
+            try {
+            return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+            } catch (e) { /* no era UTF-8, se sigue */ }
+        }
+        // 2) Formato binario con texto UTF-16LE.
+        const text = longestUtf16Run(bytes).replace(/^\n+|\s+$/g, "");
+        return text.length >= 3 ? text : "";
+        }
 
-		const list = document.getElementById("list");
-		const count = document.getElementById("count");
-		const allBtn = document.getElementById("all");
-		const drop = document.getElementById("drop");
-		const picker = document.getElementById("picker");
-		const results = [];
+        // ---- Interfaz ------------------------------------------------------------
+        const list = document.getElementById("list");
+        const count = document.getElementById("count");
+        const allBtn = document.getElementById("all");
+        const delAllBtn = document.getElementById("delAll");
+        const drop = document.getElementById("drop");
+        const picker = document.getElementById("picker");
+        const results = [];
 
-		let mode = "txt";
+        let mode = "txt";
 
-		function outName(name) {
-			return name.replace(/\.note$/i, "") + "." + mode;
-		}
+        function outName(name) {
+        return name.replace(/\.note$/i, "") + "." + mode;
+        }
 
-		function textToHtml(text) {
-			const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-			const lines = text.replace(/\r\n?/g, "\n").split("\n").map(l => l.trim());
-			const out = [];
-			let stanza = [];
-			let i = 0;
-			while (i < lines.length && !lines[i]) i++;
-			if (i < lines.length) out.push("<h2>" + esc(lines[i++]) + "</h2>");
-			const flush = () => {
-				if (!stanza.length) return;
-				const body = stanza.map((l, k) => esc(l) + (k < stanza.length - 1 ? " <br>" : "")).join("\n");
-				out.push("<p>\n" + body + "\n</p>");
-				stanza = [];
-			};
-			for (; i < lines.length; i++) {
-				if (lines[i]) stanza.push(lines[i]); else flush();
-			}
-			flush();
-			return out.join("\n\n");
-		}
+        // Título (primera línea) → <h2>; cada estrofa (bloque separado por una
+        // línea en blanco) → <p> con un <br> al final de cada verso menos el último.
+        function textToHtml(text) {
+        const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const lines = text.replace(/\r\n?/g, "\n").split("\n").map(l => l.trim());
+        const out = [];
+        let stanza = [];
+        let i = 0;
+        while (i < lines.length && !lines[i]) i++;
+        if (i < lines.length) out.push("<h2>" + esc(lines[i++]) + "</h2>");
+        const flush = () => {
+            if (!stanza.length) return;
+            const body = stanza.map((l, k) => esc(l) + (k < stanza.length - 1 ? " <br>" : "")).join("\n");
+            out.push("<p>\n" + body + "\n</p>");
+            stanza = [];
+        };
+        for (; i < lines.length; i++) {
+            if (lines[i]) stanza.push(lines[i]); else flush();
+        }
+        flush();
+        return out.join("\n\n");
+        }
 
-		function getOut(r) {
-			if (mode === "txt") return r.text;
-			if (r.html == null) r.html = textToHtml(r.text);
-			return r.html;
-		}
+        function getOut(r) {
+        if (mode === "txt") return r.text;
+        if (r.html == null) r.html = textToHtml(r.text);
+        return r.html;
+        }
 
-		function download(name, text) {
-			const type = mode === "html" ? "text/html" : "text/plain";
-			const blob = new Blob([text + "\n"], { type: type + ";charset=utf-8" });
-			const a = document.createElement("a");
-			a.href = URL.createObjectURL(blob);
-			a.download = name;
-			document.body.appendChild(a);
-			a.click();
-			a.remove();
-			setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-		}
+        function download(name, text) {
+        const type = mode === "html" ? "text/html" : "text/plain";
+        const blob = new Blob([text + "\n"], { type: type + ";charset=utf-8" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        }
 
-		function render() {
-			const ok = results.filter(r => r.text);
-			count.textContent = results.length
-				? `${ok.length} de ${results.length} convertidos`
-				: "Sin archivos";
-			allBtn.hidden = ok.length < 2;
-			if (!results.length) {
-				list.innerHTML = '<p class="empty">Los archivos convertidos aparecerán aquí.</p>';
-				return;
-			}
-			list.innerHTML = "";
-			results.forEach(r => {
-				const card = document.createElement("div");
-				card.className = "item" + (r.text ? "" : " error");
-				const head = document.createElement("div");
-				head.className = "head";
-				head.innerHTML = '<span class="name"></span><span class="meta"></span>';
-				head.firstChild.textContent = r.name + " → " + outName(r.name);
-				head.lastChild.textContent = (r.size / 1024).toFixed(1) + " KB";
-				card.appendChild(head);
+        function render() {
+        const ok = results.filter(r => r.text);
+        count.textContent = results.length
+            ? `${ok.length} de ${results.length} convertidos`
+            : "Sin archivos";
+        allBtn.hidden = ok.length < 2;
+        delAllBtn.hidden = !results.length;
+        if (!results.length) {
+            list.innerHTML = '<p class="empty">Los archivos convertidos aparecerán aquí.</p>';
+            return;
+        }
+        list.innerHTML = "";
+        results.forEach(r => {
+            const card = document.createElement("div");
+            card.className = "item" + (r.text ? "" : " error");
+            const head = document.createElement("div");
+            head.className = "head";
+            head.innerHTML = '<span class="name"></span><span class="meta"></span>';
+            head.firstChild.textContent = r.name + " → " + outName(r.name);
+            head.lastChild.textContent = (r.size / 1024).toFixed(1) + " KB";
+            card.appendChild(head);
 
-				if (!r.text) {
-					const p = document.createElement("p");
-					p.className = "err-msg";
-					p.textContent = "No se encontró texto legible en este archivo.";
-					card.appendChild(p);
-				} else {
-					const ta = document.createElement("textarea");
-					ta.value = getOut(r);
-					ta.setAttribute("aria-label", "Texto de " + r.name);
-					ta.addEventListener("input", () => {
-						if (mode === "txt") { r.text = ta.value; r.html = null; }
-						else { r.html = ta.value; }
-					});
-					card.appendChild(ta);
+            if (!r.text) {
+            const p = document.createElement("p");
+            p.className = "err-msg";
+            p.textContent = "No se encontró texto legible en este archivo.";
+            card.appendChild(p);
+            }
+            const actions = document.createElement("div");
+            actions.className = "actions";
+            if (r.text) {
+            const ta = document.createElement("textarea");
+            ta.value = getOut(r);
+            ta.setAttribute("aria-label", "Texto de " + r.name);
+            ta.addEventListener("input", () => {
+                if (mode === "txt") { r.text = ta.value; r.html = null; }
+                else { r.html = ta.value; }
+            });
+            card.appendChild(ta);
 
-					const actions = document.createElement("div");
-					actions.className = "actions";
-					const dl = document.createElement("button");
-					dl.textContent = "Descargar ." + mode;
-					dl.onclick = () => download(outName(r.name), getOut(r));
-					const cp = document.createElement("button");
-					cp.className = "ghost";
-					cp.textContent = "Copiar texto";
-					cp.onclick = async () => {
-						try { await navigator.clipboard.writeText(getOut(r)); cp.textContent = "Copiado"; }
-						catch (e) { ta.select(); cp.textContent = "Selecciona y copia"; }
-						setTimeout(() => (cp.textContent = "Copiar texto"), 1600);
-					};
-					actions.append(dl, cp);
-					card.appendChild(actions);
-				}
-				list.appendChild(card);
-			});
-		}
+            const dl = document.createElement("button");
+            dl.textContent = "Descargar ." + mode;
+            dl.onclick = () => download(outName(r.name), getOut(r));
+            const cp = document.createElement("button");
+            cp.className = "ghost";
+            cp.textContent = "Copiar texto";
+            cp.onclick = async () => {
+                try { await navigator.clipboard.writeText(getOut(r)); cp.textContent = "Copiado"; }
+                catch (e) { ta.select(); cp.textContent = "Selecciona y copia"; }
+                setTimeout(() => (cp.textContent = "Copiar texto"), 1600);
+            };
+            actions.append(dl, cp);
+            }
+            const del = document.createElement("button");
+            del.className = "danger";
+            del.textContent = "Borrar";
+            del.onclick = () => { results.splice(results.indexOf(r), 1); render(); };
+            actions.appendChild(del);
+            card.appendChild(actions);
+            list.appendChild(card);
+        });
+        }
 
-		async function handleFiles(files) {
-			for (const f of files) {
-				const buf = await f.arrayBuffer();
-				results.push({ name: f.name, size: f.size, text: extractText(buf) });
-			}
-			render();
-		}
+        async function handleFiles(files) {
+        for (const f of files) {
+            const buf = await f.arrayBuffer();
+            results.push({ name: f.name, size: f.size, text: extractText(buf) });
+        }
+        render();
+        }
 
-		["txt", "html"].forEach(m =>
-			document.getElementById("tab-" + m).addEventListener("click", () => {
-				mode = m;
-				["txt", "html"].forEach(x =>
-					document.getElementById("tab-" + x).setAttribute("aria-selected", String(x === m)));
-				render();
-			}));
+        ["txt", "html"].forEach(m =>
+        document.getElementById("tab-" + m).addEventListener("click", () => {
+            mode = m;
+            ["txt", "html"].forEach(x =>
+            document.getElementById("tab-" + x).setAttribute("aria-selected", String(x === m)));
+            render();
+        }));
 
-		picker.addEventListener("change", e => { handleFiles(e.target.files); picker.value = ""; });
-		["dragenter", "dragover"].forEach(ev =>
-			drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
-		["dragleave", "drop"].forEach(ev =>
-			drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
-		drop.addEventListener("drop", e => handleFiles(e.dataTransfer.files));
+        picker.addEventListener("change", e => { handleFiles(e.target.files); picker.value = ""; });
+        ["dragenter", "dragover"].forEach(ev =>
+        drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+        ["dragleave", "drop"].forEach(ev =>
+        drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+        drop.addEventListener("drop", e => handleFiles(e.dataTransfer.files));
 
-		allBtn.addEventListener("click", () => {
-			results.filter(r => r.text).forEach((r, i) =>
-				setTimeout(() => download(outName(r.name), getOut(r)), i * 350));
-		});
-	</script>
+        delAllBtn.addEventListener("click", () => { results.length = 0; render(); });
+
+        allBtn.addEventListener("click", () => {
+        results.filter(r => r.text).forEach((r, i) =>
+            setTimeout(() => download(outName(r.name), getOut(r)), i * 350));
+        });
+    </script>
 </body>
 </html>
